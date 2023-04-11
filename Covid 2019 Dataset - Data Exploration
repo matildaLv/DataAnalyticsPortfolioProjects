@@ -1,0 +1,202 @@
+/*
+Covid 19 Data Exploration 
+Skills used: Joins, CTE's, Windows Functions, Aggregate Functions, Creating Views, Converting Data Types
+*/
+
+
+-- COVID DEATHS DATA
+
+--Select data we want to use
+
+SELECT continent, location, date, population, total_cases, new_cases, total_deaths
+FROM ['CovidDeath']
+WHERE continent IS NOT NULL
+ORDER BY location, date
+
+
+--Compare Total Cases vs Total Deaths
+--Shows likelyhood of death if you get Covid in your country
+
+SELECT continent, location, date, total_cases, total_deaths, (total_deaths/total_cases) * 100 AS DeathPercentage
+FROM ['CovidDeath']
+WHERE continent IS NOT NULL
+ORDER BY location, date
+
+
+-- Compare Total Cases vs Population
+-- Shows what persentage of population had Covid
+
+SELECT continent, location, date, total_cases, population, (total_cases/population) * 100 AS PersentPopulationInfected
+FROM ['CovidDeath']
+WHERE continent IS NOT NULL
+ORDER BY location, date
+
+
+-- Looking at the countries with the highest infection rate, compared to population
+
+SELECT continent, location, MAX(total_cases) AS TotalInfectionCount, population, MAX((total_cases/population)) * 100 AS PersentPopulationInfected
+FROM ['CovidDeath']
+WHERE continent IS NOT NULL
+GROUP BY continent, location, population
+ORDER BY PersentPopulationInfected DESC
+
+
+-- Looking at the countries with the highest deaths count
+
+SELECT continent, location, MAX (CAST(total_deaths AS int)) AS TotalDeathsCount
+FROM ['CovidDeath']
+WHERE continent IS NOT NULL
+GROUP BY continent, location
+ORDER BY TotalDeathsCount DESC
+
+
+-- BREAKDOWN BY CONTINENT
+
+-- Looking into amount  of death by continent
+
+SELECT continent, SUM (CAST(new_deaths AS int)) AS TotalDeathsCount
+FROM ['CovidDeath']
+WHERE continent IS NOT NULL
+GROUP BY continent
+ORDER BY TotalDeathsCount DESC
+
+-- BREAKDOWN GLOBAL
+
+-- Shows global statistics by day
+
+SELECT 
+	date, 
+	SUM(new_cases) AS NewCasesCount, 
+	SUM(CAST (new_deaths AS int)) NewDeathsCount, 
+	SUM(CAST (new_deaths AS int))/SUM(new_cases)*100 AS DeathPercentage
+FROM ['CovidDeath']
+WHERE continent IS NOT NULL
+GROUP BY date
+ORDER BY date
+
+-- Shows global statistics
+
+SELECT 
+	SUM(new_cases) AS NewCasesCount, 
+	SUM(CAST (new_deaths AS int)) NewDeathsCount, 
+	SUM(CAST (new_deaths AS int))/SUM(new_cases)*100 AS DeathPercentage
+FROM ['CovidDeath']
+WHERE continent IS NOT NULL
+
+
+-- COVID VACCINATION DATA
+
+-- Looking at the amount of vaccinations by country, calculation of Total Vaccinations
+
+SELECT 
+	D.continent, 
+	D.location, 
+	D.date, 
+	D.population, 
+	V.new_vaccinations,
+	SUM(CONVERT(bigint, V.new_vaccinations)) OVER (PARTITION BY D.location ORDER BY D.location, D.date) AS TotalVaccinations
+FROM 
+	['CovidDeath'] AS D
+	JOIN ['CovidVaccination'] V
+		ON D.date = V.date
+		AND D.location = V.location
+WHERE D.continent IS NOT NULL
+ORDER BY D.location, D.date
+
+-- Calculation of Total Persent Of Vaccinations per Country
+
+-- USING CTE
+
+WITH CalculateTotalVaccinations (Continent, Location, Date, Population, New_Vaccinations, TotalVaccinations)
+AS 
+(
+	SELECT 
+		D.continent, 
+		D.location, 
+		D.date, 
+		D.population, 
+		V.new_vaccinations,
+		SUM(CONVERT(bigint, V.new_vaccinations)) OVER (PARTITION BY D.location ORDER BY D.location, D.date) AS TotalVaccinations
+	FROM 
+		['CovidDeath'] AS D
+		JOIN ['CovidVaccination'] V
+			ON D.date = V.date
+			AND D.location = V.location
+	WHERE D.continent IS NOT NULL
+)
+
+SELECT *,  (TotalVaccinations/Population)*100 AS TotalPersentVaccinations
+FROM CalculateTotalVaccinations
+
+
+--CREATE VIEWS FOR VISUALIZATION
+
+CREATE VIEW AllData_Deaths AS
+	SELECT continent, location, date, population, total_cases, new_cases, total_deaths
+	FROM ['CovidDeath']
+	WHERE continent IS NOT NULL
+
+
+CREATE VIEW DeathPercentage AS
+	SELECT continent, location, date, total_cases, total_deaths, (total_deaths/total_cases) * 100 AS DeathPercentage
+	FROM ['CovidDeath']
+	WHERE continent IS NOT NULL
+
+CREATE VIEW PersentPopulationInfected AS
+	SELECT continent, location, date, total_cases, population, (total_cases/population) * 100 AS PersentPopulationInfected
+	FROM ['CovidDeath']
+	WHERE continent IS NOT NULL
+
+CREATE VIEW TotalInfectionRates AS
+	SELECT continent, location, MAX(total_cases) AS TotalInfectionCount, population, MAX((total_cases/population)) * 100 AS PersentPopulationInfected
+	FROM ['CovidDeath']
+	WHERE continent IS NOT NULL
+	GROUP BY continent, location, population
+
+
+CREATE VIEW TotalDeathsCount AS
+	SELECT continent, location, MAX (CAST(total_deaths AS int)) AS TotalDeathsCount
+	FROM ['CovidDeath']
+	WHERE continent IS NOT NULL
+	GROUP BY continent, location
+
+
+CREATE VIEW DeathsBreakdownByContinent AS
+	SELECT continent, SUM (CAST(new_deaths AS int)) AS TotalDeathsCount
+	FROM ['CovidDeath']
+	WHERE continent IS NOT NULL
+	GROUP BY continent
+
+
+CREATE VIEW DeathsBreakdownByDay AS
+	SELECT 
+		date, 
+		SUM(new_cases) AS NewCasesCount, 
+		SUM(CAST (new_deaths AS int)) NewDeathsCount, 
+		SUM(CAST (new_deaths AS int))/SUM(new_cases)*100 AS DeathPercentage
+	FROM ['CovidDeath']
+	WHERE continent IS NOT NULL
+	GROUP BY date
+
+
+CREATE VIEW TotalPersentVaccinations AS
+	WITH CalculateTotalVaccinations (Continent, Location, Date, Population, New_Vaccinations, TotalVaccinations)
+	AS 
+	(
+		SELECT 
+			D.continent, 
+			D.location, 
+			D.date, 
+			D.population, 
+			V.new_vaccinations,
+			SUM(CONVERT(bigint, V.new_vaccinations)) OVER (PARTITION BY D.location ORDER BY D.location, D.date) AS TotalVaccinations
+		FROM 
+			['CovidDeath'] AS D
+			JOIN ['CovidVaccination'] V
+				ON D.date = V.date
+				AND D.location = V.location
+		WHERE D.continent IS NOT NULL
+	)
+
+	SELECT *,  (TotalVaccinations/Population)*100 AS TotalPersentVaccinations
+	FROM CalculateTotalVaccinations
